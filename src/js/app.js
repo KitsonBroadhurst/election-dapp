@@ -1,68 +1,103 @@
 App = {
   web3Provider: null,
   contracts: {},
+  account: '0x0',
 
-  init: async function() {
-    // Load pets.
-    $.getJSON('../pets.json', function(data) {
-      var petsRow = $('#petsRow');
-      var petTemplate = $('#petTemplate');
-
-      for (i = 0; i < data.length; i ++) {
-        petTemplate.find('.panel-title').text(data[i].name);
-        petTemplate.find('img').attr('src', data[i].picture);
-        petTemplate.find('.pet-breed').text(data[i].breed);
-        petTemplate.find('.pet-age').text(data[i].age);
-        petTemplate.find('.pet-location').text(data[i].location);
-        petTemplate.find('.btn-adopt').attr('data-id', data[i].id);
-
-        petsRow.append(petTemplate.html());
-      }
-    });
-
-    return await App.initWeb3();
+  init: function() {
+    console.log('App Initialized.');
+    return App.initWeb3();
   },
 
   initWeb3: async function() {
-    /*
-     * Replace me...
-     */
-
+    if (window.ethereum) {
+      console.log('Metamask is installed.')
+      // request account access
+      await window.ethereum.request({method: 'eth_requestAccounts'});
+      // If a web3 instance is already provided by Meta Mask.
+      // App.web3Provider = window.ethereum;
+      App.web3Provider = new Web3.providers.HttpProvider('http://localhost:7545');
+    } else {
+      console.log('Metamask is NOT installed.')
+      // Specify default instance if no web3 instance provided
+      App.web3Provider = new Web3.providers.HttpProvider('http://localhost:7545');
+    }
+    window.web3 = new Web3(App.web3Provider);
     return App.initContract();
   },
 
   initContract: function() {
-    /*
-     * Replace me...
-     */
+    $.getJSON("Election.json", function(election) {
+      // Instantiate a new truffle contract from the artifact
+      App.contracts.Election = TruffleContract(election);
+      // Connect provider to interact with contract
+      App.contracts.Election.setProvider(App.web3Provider);
 
-    return App.bindEvents();
+      App.contracts.Election.deployed().then(function(instance) {
+        console.log('Election Contract Address: ', instance.address);
+        App.render();
+      });
+    });
   },
 
-  bindEvents: function() {
-    $(document).on('click', '.btn-adopt', App.handleAdopt);
+  loadContractData: function() {
+    var electionInstance;
+    var loader = $("#loader");
+    var content = $("#content");
+
+    App.contracts.Election.deployed().then(function(instance) {
+      console.log('instance is ', instance)
+      electionInstance = instance;
+      return electionInstance.candidatesCount();
+    }).then(function(candidatesCount) {
+      console.log('candidatesCount is ', candidatesCount)
+      var candidatesResults = $("#candidatesResults");
+      candidatesResults.empty();
+
+      for (var i = 1; i <= candidatesCount; i++) {
+        electionInstance.candidates(i).then(function(candidate) {
+          console.log('candidate is ', candidate)
+          var id = candidate[0];
+          var name = candidate[1];
+          var voteCount = candidate[2];
+
+          // Render candidate Result
+          var candidateTemplate = "<tr><th>" + id + "</th><td>" + name + "</td><td>" + voteCount + "</td></tr>"
+          candidatesResults.append(candidateTemplate);
+        });
+      }
+
+      loader.hide();
+      content.show();
+    }).catch(function(error) {
+      console.warn(error);
+    });
   },
 
-  markAdopted: function() {
-    /*
-     * Replace me...
-     */
-  },
+  render: function() {
+    var loader = $("#loader");
+    var content = $("#content");
 
-  handleAdopt: function(event) {
-    event.preventDefault();
+    loader.show();
+    content.hide();
 
-    var petId = parseInt($(event.target).data('id'));
-
-    /*
-     * Replace me...
-     */
+    // Load account data
+    web3.eth.getCoinbase(function(err, account) {
+      if (err === null) {
+        App.account = account;
+        console.log("Account: ", App.account);
+        $("#accountAddress").html("Your Account: " + account);
+      }
+      App.loadContractData()
+    })
   }
-
 };
 
 $(function() {
   $(window).load(function() {
     App.init();
   });
+});
+
+window.ethereum.on('accountsChanged', (accounts) => {
+  App.render();
 });
