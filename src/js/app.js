@@ -2,6 +2,7 @@ App = {
   web3Provider: null,
   contracts: {},
   account: '0x0',
+  blockNumber: 'latest',
 
   init: function() {
     console.log('App Initialized.');
@@ -47,11 +48,44 @@ App = {
     });
   },
 
-  loadContractData: function() {
+  castVote: function() {
+    console.log('castVote was triggered...')
+    var candidateId = $('#candidatesSelect').val();
+    App.contracts.Election.deployed().then(function(instance) {
+      return instance.vote(candidateId, { from: App.account });
+    }).then(function(result) {
+      // Wait for votes to update
+      $("#content").hide();
+      $("#loader").show();
+    }).catch(function(err) {
+      console.error(err);
+    });
+  },
+
+  listenForEvents: function() {
+    App.contracts.Election.deployed().then(function(instance) {
+      instance.votedEvent({}, {
+        fromBlock: App.blockNumber,
+        toBlock: 'latest'
+      }).watch(function(_, event) {
+        console.log('event triggered: ', event);
+        // update the Block number
+        App.blockNumber = event.blockNumber + 1;
+        // Reload when a new vote is received
+        App.render();
+      })
+    })
+  },
+
+  render: function() {
     var electionInstance;
     var loader = $("#loader");
     var content = $("#content");
 
+    loader.show();
+    content.hide();
+
+    // Load account data
     App.contracts.Election.deployed().then(function(instance) {
       electionInstance = instance;
       return electionInstance.candidatesCount();
@@ -88,43 +122,6 @@ App = {
     }).catch(function(error) {
       console.warn(error);
     });
-  },
-
-  castVote: function() {
-    var candidateId = $('#candidatesSelect').val();
-    App.contracts.Election.deployed().then(function(instance) {
-      return instance.vote(candidateId, { from: App.account });
-    }).then(function(result) {
-      // Wait for votes to update
-      $("#content").hide();
-      $("#loader").show();
-    }).catch(function(err) {
-      console.error(err);
-    });
-  },
-
-  listenForEvents: function() {
-    App.contracts.Election.deployed().then(function(instaince) {
-      instaince.votedEvent({}, {
-        fromBlock: 0,
-        toBlock: 'latest'
-      }).watch(function(error, event) {
-        console.log('event triggered: ', event);
-        // Reload when a new vote is received
-        App.render();
-      })
-    })
-  },
-
-  render: function() {
-    var loader = $("#loader");
-    var content = $("#content");
-
-    loader.show();
-    content.hide();
-
-    // Load account data
-    App.loadContractData()
   }
 };
 
@@ -134,6 +131,6 @@ $(function() {
   });
 });
 
-window.ethereum.on('accountsChanged', (accounts) => {
+window.ethereum.on('accountsChanged', (account) => {
   App.render();
 });
